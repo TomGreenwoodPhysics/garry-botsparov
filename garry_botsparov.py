@@ -6,7 +6,7 @@ import pygame
 
 # engine settings
 ENGINE_DEPTH = 4
-PLAYER_COLOUR = chess.BLACK
+PLAYER_COLOUR = chess.WHITE
 QUIESCENCE_DEPTH = 4
 
 # graphics settings

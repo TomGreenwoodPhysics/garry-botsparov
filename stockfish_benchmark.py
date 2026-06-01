@@ -4,16 +4,16 @@ import time
 import chess
 import chess.engine
 
-from pygame_chess import ChessEngine
+from garry_botsparov import ChessEngine
 
 
 STOCKFISH_PATH = r"C:\Users\Tom Greenwood\Desktop\Coding Projects\Chess Bot\stockfish\stockfish-windows-x86-64-avx2.exe"
 
-STOCKFISH_ELO = 1550
-NUM_GAMES = 10
+STOCKFISH_ELO = 1500
+NUM_GAMES = 2
 MAX_MOVES = 200
 
-YOUR_ENGINE_DEPTH = 4
+YOUR_ENGINE_DEPTH = 2
 STOCKFISH_TIME_PER_MOVE = 0.1
 
 
