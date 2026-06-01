@@ -9,27 +9,49 @@ from garry_botsparov import ChessEngine
 
 STOCKFISH_PATH = r"C:\Users\Tom Greenwood\Desktop\Coding Projects\Chess Bot\stockfish\stockfish-windows-x86-64-avx2.exe"
 
-STOCKFISH_ELO = 1500
-NUM_GAMES = 5
-MAX_PLIES = 200
+STOCKFISH_ELO = 1550
+NUM_GAMES = 30
+MAX_PLIES = 400
 
 YOUR_ENGINE_MAX_DEPTH = 10
 YOUR_ENGINE_TIME_PER_MOVE = 2.0
 STOCKFISH_TIME_PER_MOVE = 0.1
 
 
+def get_game_phase(ply):
+    if ply < 20:
+        return "opening"
+
+    if ply < 80:
+        return "middlegame"
+
+    return "endgame"
+
+
 def play_game(stockfish, your_colour):
     board = chess.Board()
 
-    # create a fresh engine for each game so the transposition table does not carry over
+    # fresh engine each game so the transposition table does not carry over
     your_engine = ChessEngine(
         max_depth=YOUR_ENGINE_MAX_DEPTH,
         time_limit=YOUR_ENGINE_TIME_PER_MOVE,
     )
 
+    move_stats = []
+
     while not board.is_game_over(claim_draw=True) and board.ply() < MAX_PLIES:
         if board.turn == your_colour:
+            phase = get_game_phase(board.ply())
             move = your_engine.choose_move(board)
+
+            move_stats.append({
+                "depth": your_engine.last_depth_reached,
+                "nodes": your_engine.nodes_searched,
+                "time": your_engine.last_search_time,
+                "tt_hits": your_engine.tt_hits,
+                "phase": phase,
+            })
+
         else:
             result = stockfish.play(
                 board,
@@ -57,12 +79,12 @@ def play_game(stockfish, your_colour):
         winner = None
 
     if winner is None:
-        return "draw", board.ply(), result
+        return "draw", board.ply(), result, move_stats
 
     if winner == your_colour:
-        return "win", board.ply(), result
+        return "win", board.ply(), result, move_stats
 
-    return "loss", board.ply(), result
+    return "loss", board.ply(), result, move_stats
 
 
 def score_results(results):
@@ -87,8 +109,45 @@ def estimate_elo_difference(score_rate):
     return -400 * math.log10(1 / score_rate - 1)
 
 
+def average(values):
+    if not values:
+        return 0
+
+    return sum(values) / len(values)
+
+
+def summarise_search_stats(all_move_stats):
+    depths = [stat["depth"] for stat in all_move_stats]
+    nodes = [stat["nodes"] for stat in all_move_stats]
+    times = [stat["time"] for stat in all_move_stats]
+    tt_hits = [stat["tt_hits"] for stat in all_move_stats]
+
+    phase_depths = {
+        "opening": [],
+        "middlegame": [],
+        "endgame": [],
+    }
+
+    for stat in all_move_stats:
+        phase_depths[stat["phase"]].append(stat["depth"])
+
+    return {
+        "moves": len(all_move_stats),
+        "avg_depth": average(depths),
+        "max_depth": max(depths) if depths else 0,
+        "avg_nodes": average(nodes),
+        "avg_time": average(times),
+        "avg_tt_hits": average(tt_hits),
+        "phase_depths": {
+            phase: average(depth_list)
+            for phase, depth_list in phase_depths.items()
+        },
+    }
+
+
 def main():
     results = []
+    all_move_stats = []
 
     with chess.engine.SimpleEngine.popen_uci(STOCKFISH_PATH) as stockfish:
         stockfish.configure({
@@ -104,16 +163,26 @@ def main():
 
             print(f"Game {game_number}/{NUM_GAMES}: your engine as {colour_name}")
 
-            result, plies, raw_result = play_game(stockfish, your_colour)
+            result, plies, raw_result, move_stats = play_game(
+                stockfish,
+                your_colour,
+            )
 
             results.append(result)
+            all_move_stats.extend(move_stats)
+
+            game_avg_depth = average([stat["depth"] for stat in move_stats])
+            game_avg_time = average([stat["time"] for stat in move_stats])
 
             print(f"  result: {result} ({raw_result}), plies: {plies}")
+            print(f"  average depth: {game_avg_depth:.2f}")
+            print(f"  average time/move: {game_avg_time:.2f}s")
 
         elapsed = time.time() - start_time
 
     wins, draws, losses, score, score_rate = score_results(results)
     elo_diff = estimate_elo_difference(score_rate)
+    search_stats = summarise_search_stats(all_move_stats)
 
     print()
     print("Benchmark complete")
@@ -137,6 +206,23 @@ def main():
         print(f"Estimated Elo difference vs Stockfish setting: {elo_diff:+.0f}")
 
     print(f"Total time: {elapsed:.1f}s")
+
+    print()
+    print("Engine search stats")
+    print("-------------------")
+    print(f"Engine moves analysed: {search_stats['moves']}")
+    print(f"Average depth reached: {search_stats['avg_depth']:.2f}")
+    print(f"Maximum depth reached: {search_stats['max_depth']}")
+    print(f"Average nodes per move: {search_stats['avg_nodes']:.0f}")
+    print(f"Average time per move: {search_stats['avg_time']:.2f}s")
+    print(f"Average TT hits per move: {search_stats['avg_tt_hits']:.0f}")
+
+    print()
+    print("Average depth by phase")
+    print("----------------------")
+    print(f"Opening: {search_stats['phase_depths']['opening']:.2f}")
+    print(f"Middlegame: {search_stats['phase_depths']['middlegame']:.2f}")
+    print(f"Endgame: {search_stats['phase_depths']['endgame']:.2f}")
 
 
 if __name__ == "__main__":
