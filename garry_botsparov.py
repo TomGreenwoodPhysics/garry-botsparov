@@ -2,10 +2,12 @@ import math
 import time
 
 import chess
+import chess.polyglot
 import pygame
 
 # engine settings
-ENGINE_DEPTH = 4
+MAX_ENGINE_DEPTH = 6
+ENGINE_TIME_LIMIT = 5.0
 PLAYER_COLOUR = chess.WHITE
 QUIESCENCE_DEPTH = 4
 
@@ -111,38 +113,57 @@ PIECE_SQUARE_TABLES = {
 }
 
 
+class SearchTimeout(Exception):
+    pass
+
+
 class ChessEngine:
-    def __init__(self, depth=ENGINE_DEPTH):
-        self.depth = depth
+    def __init__(self, max_depth=MAX_ENGINE_DEPTH, time_limit=ENGINE_TIME_LIMIT):
+        self.max_depth = max_depth
+        self.time_limit = time_limit
         self.nodes_searched = 0
         self.last_eval = 0.0
         self.last_search_time = 0.0
+        self.last_depth_reached = 0
+        self.transposition_table = {}
+        self.tt_hits = 0
+        self.search_start_time = 0.0
 
     def choose_move(self, board):
         self.nodes_searched = 0
+        self.tt_hits = 0
+        self.last_depth_reached = 0
+        self.search_start_time = time.time()
 
-        best_move = None
+        legal_moves = list(board.legal_moves)
+
+        if not legal_moves:
+            return None
+
+        best_move = legal_moves[0]
         best_score = -math.inf
 
-        alpha = -math.inf
-        beta = math.inf
+        try:
+            for depth in range(1, self.max_depth + 1):
+                current_best_move, current_best_score = self.search_root(board, depth)
 
-        moves = self.order_moves(board, list(board.legal_moves))
+                best_move = current_best_move
+                best_score = current_best_score
+                self.last_depth_reached = depth
 
-        start_time = time.time()
+                board_hash = self.get_board_hash(board)
+                self.transposition_table[board_hash] = (
+                    depth,
+                    best_score,
+                    "exact",
+                    best_move,
+                )
 
-        for move in moves:
-            board.push(move)
-            score = -self.negamax(board, self.depth - 1, -beta, -alpha)
-            board.pop()
+        except SearchTimeout:
+            pass
 
-            if score > best_score:
-                best_score = score
-                best_move = move
+        self.last_search_time = time.time() - self.search_start_time
 
-            alpha = max(alpha, best_score)
-
-        self.last_search_time = time.time() - start_time
         if board.turn == PLAYER_COLOUR:
             self.last_eval = best_score / 100
         else:
@@ -150,7 +171,35 @@ class ChessEngine:
 
         return best_move
 
+    def search_root(self, board, depth):
+        best_move = None
+        best_score = -math.inf
+
+        alpha = -math.inf
+        beta = math.inf
+
+        tt_move = self.get_tt_move(board)
+        moves = self.order_moves(board, list(board.legal_moves), tt_move)
+
+        for move in moves:
+            self.check_time()
+
+            try:
+                board.push(move)
+                score = -self.negamax(board, depth - 1, -beta, -alpha)
+            finally:
+                board.pop()
+
+            if score > best_score:
+                best_score = score
+                best_move = move
+
+            alpha = max(alpha, best_score)
+
+        return best_move, best_score
+
     def negamax(self, board, depth, alpha, beta):
+        self.check_time()
         self.nodes_searched += 1
 
         if board.is_checkmate():
@@ -164,26 +213,71 @@ class ChessEngine:
                 return -5000
             return 0
 
+        alpha_original = alpha
+        board_hash = self.get_board_hash(board)
+        tt_entry = self.transposition_table.get(board_hash)
+
+        if tt_entry is not None:
+            tt_depth, tt_score, tt_flag, tt_move = tt_entry
+
+            if tt_depth >= depth:
+                self.tt_hits += 1
+
+                if tt_flag == "exact":
+                    return tt_score
+
+                if tt_flag == "lower":
+                    alpha = max(alpha, tt_score)
+
+                elif tt_flag == "upper":
+                    beta = min(beta, tt_score)
+
+                if alpha >= beta:
+                    return tt_score
+
         if depth == 0:
             return self.quiescence_search(board, alpha, beta, QUIESCENCE_DEPTH)
 
         best_score = -math.inf
-        moves = self.order_moves(board, list(board.legal_moves))
+        best_move = None
+
+        tt_move = self.get_tt_move(board)
+        moves = self.order_moves(board, list(board.legal_moves), tt_move)
 
         for move in moves:
-            board.push(move)
-            score = -self.negamax(board, depth - 1, -beta, -alpha)
-            board.pop()
+            try:
+                board.push(move)
+                score = -self.negamax(board, depth - 1, -beta, -alpha)
+            finally:
+                board.pop()
 
-            best_score = max(best_score, score)
+            if score > best_score:
+                best_score = score
+                best_move = move
+
             alpha = max(alpha, score)
 
             if alpha >= beta:
                 break
 
+        if best_score <= alpha_original:
+            flag = "upper"
+        elif best_score >= beta:
+            flag = "lower"
+        else:
+            flag = "exact"
+
+        self.transposition_table[board_hash] = (
+            depth,
+            best_score,
+            flag,
+            best_move,
+        )
+
         return best_score
 
     def quiescence_search(self, board, alpha, beta, depth):
+        self.check_time()
         self.nodes_searched += 1
 
         stand_pat = self.evaluate(board)
@@ -205,11 +299,13 @@ class ChessEngine:
         capture_moves = self.order_moves(board, capture_moves)
 
         for move in capture_moves:
-            board.push(move)
+            self.check_time()
 
-            score = -self.quiescence_search(board, -beta, -alpha, depth - 1)
-
-            board.pop()
+            try:
+                board.push(move)
+                score = -self.quiescence_search(board, -beta, -alpha, depth - 1)
+            finally:
+                board.pop()
 
             if score >= beta:
                 return beta
@@ -256,21 +352,43 @@ class ChessEngine:
         return table[mirrored_square]
 
     def evaluate_mobility(self, board):
-        current_turn = board.turn
+        test_board = board.copy(stack=False)
 
-        board.turn = chess.WHITE
-        white_mobility = len(list(board.legal_moves))
+        test_board.turn = chess.WHITE
+        white_mobility = len(list(test_board.legal_moves))
 
-        board.turn = chess.BLACK
-        black_mobility = len(list(board.legal_moves))
-
-        board.turn = current_turn
+        test_board.turn = chess.BLACK
+        black_mobility = len(list(test_board.legal_moves))
 
         return 2 * (white_mobility - black_mobility)
 
-    def order_moves(self, board, moves):
+    def get_board_hash(self, board):
+        return chess.polyglot.zobrist_hash(board), board.halfmove_clock
+
+    def get_tt_move(self, board):
+        board_hash = self.get_board_hash(board)
+        tt_entry = self.transposition_table.get(board_hash)
+
+        if tt_entry is None:
+            return None
+
+        move = tt_entry[3]
+
+        if move in board.legal_moves:
+            return move
+
+        return None
+
+    def check_time(self):
+        if time.time() - self.search_start_time >= self.time_limit:
+            raise SearchTimeout
+
+    def order_moves(self, board, moves, tt_move=None):
         def move_score(move):
             score = 0
+
+            if move == tt_move:
+                score += 100000
 
             if board.is_capture(move):
                 victim = board.piece_at(move.to_square)
@@ -283,12 +401,13 @@ class ChessEngine:
             if move.promotion is not None:
                 score += PIECE_VALUES[move.promotion]
 
-            board.push(move)
+            try:
+                board.push(move)
 
-            if board.is_check():
-                score += 50
-
-            board.pop()
+                if board.is_check():
+                    score += 50
+            finally:
+                board.pop()
 
             return score
 
@@ -307,7 +426,7 @@ class ChessGUI:
         self.small_font = pygame.font.SysFont("arial", 18)
 
         self.board = chess.Board()
-        self.engine = ChessEngine(depth=ENGINE_DEPTH)
+        self.engine = ChessEngine()
 
         self.player_colour = PLAYER_COLOUR
         self.selected_square = None
@@ -425,9 +544,12 @@ class ChessGUI:
 
         move = self.engine.choose_move(self.board)
 
-        if move is not None:
+        if move is not None and move in self.board.legal_moves:
             self.board.push(move)
             self.last_move = move
+        else:
+            self.status = "Engine failed to find a legal move."
+            return
 
         self.update_status()
 
@@ -455,7 +577,9 @@ class ChessGUI:
 
         self.status = (
             f"Engine eval: {self.engine.last_eval:.2f} pawns | "
+            f"Depth: {self.engine.last_depth_reached} | "
             f"Nodes: {self.engine.nodes_searched} | "
+            f"TT hits: {self.engine.tt_hits} | "
             f"Time: {self.engine.last_search_time:.2f}s"
         )
 

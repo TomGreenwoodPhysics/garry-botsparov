@@ -10,17 +10,24 @@ from garry_botsparov import ChessEngine
 STOCKFISH_PATH = r"C:\Users\Tom Greenwood\Desktop\Coding Projects\Chess Bot\stockfish\stockfish-windows-x86-64-avx2.exe"
 
 STOCKFISH_ELO = 1500
-NUM_GAMES = 2
-MAX_MOVES = 200
+NUM_GAMES = 5
+MAX_PLIES = 200
 
-YOUR_ENGINE_DEPTH = 2
+YOUR_ENGINE_MAX_DEPTH = 10
+YOUR_ENGINE_TIME_PER_MOVE = 2.0
 STOCKFISH_TIME_PER_MOVE = 0.1
 
 
-def play_game(stockfish, your_engine, your_colour):
+def play_game(stockfish, your_colour):
     board = chess.Board()
 
-    while not board.is_game_over() and len(board.move_stack) < MAX_MOVES:
+    # create a fresh engine for each game so the transposition table does not carry over
+    your_engine = ChessEngine(
+        max_depth=YOUR_ENGINE_MAX_DEPTH,
+        time_limit=YOUR_ENGINE_TIME_PER_MOVE,
+    )
+
+    while not board.is_game_over(claim_draw=True) and board.ply() < MAX_PLIES:
         if board.turn == your_colour:
             move = your_engine.choose_move(board)
         else:
@@ -31,6 +38,11 @@ def play_game(stockfish, your_engine, your_colour):
             move = result.move
 
         if move is None:
+            break
+
+        if move not in board.legal_moves:
+            print(f"Illegal move attempted: {move}")
+            print(board)
             break
 
         board.push(move)
@@ -45,12 +57,12 @@ def play_game(stockfish, your_engine, your_colour):
         winner = None
 
     if winner is None:
-        return "draw", board.ply(), board.result(claim_draw=True)
+        return "draw", board.ply(), result
 
     if winner == your_colour:
-        return "win", board.ply(), board.result(claim_draw=True)
+        return "win", board.ply(), result
 
-    return "loss", board.ply(), board.result(claim_draw=True)
+    return "loss", board.ply(), result
 
 
 def score_results(results):
@@ -76,8 +88,6 @@ def estimate_elo_difference(score_rate):
 
 
 def main():
-    your_engine = ChessEngine(depth=YOUR_ENGINE_DEPTH)
-
     results = []
 
     with chess.engine.SimpleEngine.popen_uci(STOCKFISH_PATH) as stockfish:
@@ -94,11 +104,7 @@ def main():
 
             print(f"Game {game_number}/{NUM_GAMES}: your engine as {colour_name}")
 
-            result, plies, raw_result = play_game(
-                stockfish,
-                your_engine,
-                your_colour,
-            )
+            result, plies, raw_result = play_game(stockfish, your_colour)
 
             results.append(result)
 
@@ -112,20 +118,24 @@ def main():
     print()
     print("Benchmark complete")
     print("------------------")
-    print(f"Your engine depth: {YOUR_ENGINE_DEPTH}")
+    print(f"Your engine max depth: {YOUR_ENGINE_MAX_DEPTH}")
+    print(f"Your engine time per move: {YOUR_ENGINE_TIME_PER_MOVE:.2f}s")
     print(f"Stockfish Elo setting: {STOCKFISH_ELO}")
+    print(f"Stockfish time per move: {STOCKFISH_TIME_PER_MOVE:.2f}s")
     print(f"Games: {NUM_GAMES}")
     print(f"Wins: {wins}")
     print(f"Draws: {draws}")
     print(f"Losses: {losses}")
     print(f"Score: {score}/{NUM_GAMES}")
     print(f"Score rate: {100 * score_rate:.1f}%")
+
     if score_rate == 1:
         print("Estimated Elo difference: higher than this setting, not enough losses/draws to estimate.")
     elif score_rate == 0:
         print("Estimated Elo difference: lower than this setting, no score achieved.")
     else:
         print(f"Estimated Elo difference vs Stockfish setting: {elo_diff:+.0f}")
+
     print(f"Total time: {elapsed:.1f}s")
 
 
