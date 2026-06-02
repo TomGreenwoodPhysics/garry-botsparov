@@ -6,10 +6,11 @@ import chess.polyglot
 import pygame
 
 # engine settings
-MAX_ENGINE_DEPTH = 6
-ENGINE_TIME_LIMIT = 5.0
+MAX_ENGINE_DEPTH = 10
+ENGINE_TIME_LIMIT = 2.0
 PLAYER_COLOUR = chess.WHITE
 QUIESCENCE_DEPTH = 4
+ASPIRATION_WINDOW = 50
 
 # graphics settings
 WIDTH = 640
@@ -127,11 +128,13 @@ class ChessEngine:
         self.last_depth_reached = 0
         self.transposition_table = {}
         self.tt_hits = 0
+        self.aspiration_researches = 0
         self.search_start_time = 0.0
 
     def choose_move(self, board):
         self.nodes_searched = 0
         self.tt_hits = 0
+        self.aspiration_researches = 0
         self.last_depth_reached = 0
         self.search_start_time = time.time()
 
@@ -142,13 +145,36 @@ class ChessEngine:
 
         best_move = legal_moves[0]
         best_score = -math.inf
+        previous_score = None
 
         try:
             for depth in range(1, self.max_depth + 1):
-                current_best_move, current_best_score = self.search_root(board, depth)
+                if previous_score is None:
+                    alpha = -math.inf
+                    beta = math.inf
+                else:
+                    alpha = previous_score - ASPIRATION_WINDOW
+                    beta = previous_score + ASPIRATION_WINDOW
+
+                current_best_move, current_best_score = self.search_root(
+                    board,
+                    depth,
+                    alpha,
+                    beta,
+                )
+
+                if current_best_score <= alpha or current_best_score >= beta:
+                    self.aspiration_researches += 1
+                    current_best_move, current_best_score = self.search_root(
+                        board,
+                        depth,
+                        -math.inf,
+                        math.inf,
+                    )
 
                 best_move = current_best_move
                 best_score = current_best_score
+                previous_score = best_score
                 self.last_depth_reached = depth
 
                 board_hash = self.get_board_hash(board)
@@ -171,12 +197,9 @@ class ChessEngine:
 
         return best_move
 
-    def search_root(self, board, depth):
+    def search_root(self, board, depth, alpha=-math.inf, beta=math.inf):
         best_move = None
         best_score = -math.inf
-
-        alpha = -math.inf
-        beta = math.inf
 
         tt_move = self.get_tt_move(board)
         moves = self.order_moves(board, list(board.legal_moves), tt_move)
@@ -335,8 +358,6 @@ class ChessEngine:
             else:
                 score -= value + positional_value
 
-        score += self.evaluate_mobility(board)
-
         if board.turn == chess.WHITE:
             return score
 
@@ -400,14 +421,6 @@ class ChessEngine:
 
             if move.promotion is not None:
                 score += PIECE_VALUES[move.promotion]
-
-            try:
-                board.push(move)
-
-                if board.is_check():
-                    score += 50
-            finally:
-                board.pop()
 
             return score
 
@@ -580,6 +593,7 @@ class ChessGUI:
             f"Depth: {self.engine.last_depth_reached} | "
             f"Nodes: {self.engine.nodes_searched} | "
             f"TT hits: {self.engine.tt_hits} | "
+            f"AW: {self.engine.aspiration_researches} | "
             f"Time: {self.engine.last_search_time:.2f}s"
         )
 
