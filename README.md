@@ -5,10 +5,15 @@ A Python chess engine project featuring move generation, board evaluation, searc
 ## Features
 
 - Legal move generation
-- Position evaluation
+- Position evaluation with piece-square tables and king-safety terms
 - Minimax/negamax search
 - Alpha-beta pruning
+- Iterative deepening with aspiration windows
+- Transposition table support
+- Quiescence search
+- Optional Polyglot opening book support
 - Stockfish benchmarking
+- Game analysis and blunder-report tooling
 - Pygame-based interface
 
 ## Current status
@@ -29,3 +34,4 @@ Benchmark settings:
 - Average depth reached: 4.48 plies
 - Maximum depth reached: 8 plies
 - Average nodes per move: 33,161
+- Opening book: disabled
