@@ -1,8 +1,11 @@
+import json
 import math
 import time
+from pathlib import Path
 
 import chess
 import chess.engine
+import chess.pgn
 
 from garry_botsparov import ChessEngine
 
@@ -17,6 +20,10 @@ YOUR_ENGINE_MAX_DEPTH = 10
 YOUR_ENGINE_TIME_PER_MOVE = 2.0
 STOCKFISH_TIME_PER_MOVE = 0.1
 
+OUTPUT_DIR = Path("analysis_games")
+PGN_FILE = OUTPUT_DIR / "benchmark_games.pgn"
+MOVE_LOG_FILE = OUTPUT_DIR / "garry_move_log.jsonl"
+
 
 def get_game_phase(ply):
     if ply < 20:
@@ -28,7 +35,24 @@ def get_game_phase(ply):
     return "endgame"
 
 
-def play_game(stockfish, your_colour):
+def save_game_pgn(board, game_number, your_colour, result):
+    game = chess.pgn.Game.from_board(board)
+
+    game.headers["Event"] = "Garry Botsparov Benchmark"
+    game.headers["Round"] = str(game_number)
+    game.headers["White"] = "Garry Botsparov" if your_colour == chess.WHITE else "Stockfish"
+    game.headers["Black"] = "Garry Botsparov" if your_colour == chess.BLACK else "Stockfish"
+    game.headers["Result"] = result
+    game.headers["StockfishElo"] = str(STOCKFISH_ELO)
+    game.headers["GarryTimePerMove"] = f"{YOUR_ENGINE_TIME_PER_MOVE:.2f}"
+    game.headers["StockfishTimePerMove"] = f"{STOCKFISH_TIME_PER_MOVE:.2f}"
+    game.headers["GarryMaxDepth"] = str(YOUR_ENGINE_MAX_DEPTH)
+
+    with open(PGN_FILE, "a", encoding="utf-8") as file:
+        print(game, file=file, end="\n\n")
+
+
+def play_game(stockfish, your_colour, game_number):
     board = chess.Board()
 
     # fresh engine each game so the transposition table does not carry over
@@ -38,10 +62,12 @@ def play_game(stockfish, your_colour):
     )
 
     move_stats = []
+    garry_move_logs = []
 
     while not board.is_game_over(claim_draw=True) and board.ply() < MAX_PLIES:
         if board.turn == your_colour:
             phase = get_game_phase(board.ply())
+            fen_before = board.fen()
             move = your_engine.choose_move(board)
 
             move_stats.append({
@@ -51,6 +77,24 @@ def play_game(stockfish, your_colour):
                 "tt_hits": your_engine.tt_hits,
                 "phase": phase,
             })
+
+            log_entry = {
+                "game": game_number,
+                "ply": board.ply(),
+                "fen_before": fen_before,
+                "move": move.uci() if move is not None else None,
+                "phase": phase,
+                "depth": your_engine.last_depth_reached,
+                "nodes": your_engine.nodes_searched,
+                "time": your_engine.last_search_time,
+                "tt_hits": your_engine.tt_hits,
+                "your_colour": "white" if your_colour == chess.WHITE else "black",
+            }
+
+            if hasattr(your_engine, "aspiration_researches"):
+                log_entry["aspiration_researches"] = your_engine.aspiration_researches
+
+            garry_move_logs.append(log_entry)
 
         else:
             result = stockfish.play(
@@ -70,6 +114,13 @@ def play_game(stockfish, your_colour):
         board.push(move)
 
     result = board.result(claim_draw=True)
+
+    save_game_pgn(board, game_number, your_colour, result)
+
+    with open(MOVE_LOG_FILE, "a", encoding="utf-8") as file:
+        for log in garry_move_logs:
+            log["result"] = result
+            file.write(json.dumps(log) + "\n")
 
     if result == "1-0":
         winner = chess.WHITE
@@ -146,6 +197,10 @@ def summarise_search_stats(all_move_stats):
 
 
 def main():
+    OUTPUT_DIR.mkdir(exist_ok=True)
+    PGN_FILE.write_text("", encoding="utf-8")
+    MOVE_LOG_FILE.write_text("", encoding="utf-8")
+
     results = []
     all_move_stats = []
 
@@ -166,6 +221,7 @@ def main():
             result, plies, raw_result, move_stats = play_game(
                 stockfish,
                 your_colour,
+                game_number,
             )
 
             results.append(result)
@@ -223,6 +279,12 @@ def main():
     print(f"Opening: {search_stats['phase_depths']['opening']:.2f}")
     print(f"Middlegame: {search_stats['phase_depths']['middlegame']:.2f}")
     print(f"Endgame: {search_stats['phase_depths']['endgame']:.2f}")
+
+    print()
+    print("Analysis files written")
+    print("----------------------")
+    print(f"PGN: {PGN_FILE}")
+    print(f"Move log: {MOVE_LOG_FILE}")
 
 
 if __name__ == "__main__":

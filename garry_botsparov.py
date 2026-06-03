@@ -1,6 +1,5 @@
 import math
 import time
-
 import chess
 import chess.polyglot
 import pygame
@@ -11,6 +10,9 @@ ENGINE_TIME_LIMIT = 2.0
 PLAYER_COLOUR = chess.WHITE
 QUIESCENCE_DEPTH = 4
 ASPIRATION_WINDOW = 50
+USE_OPENING_BOOK = False
+OPENING_BOOK_PATH = r"C:\Users\Tom Greenwood\Desktop\Coding Projects\Chess Bot\Garry Botsparov\book.bin"
+BOOK_MAX_PLIES = 12
 
 # graphics settings
 WIDTH = 640
@@ -35,6 +37,15 @@ PIECE_VALUES = {
     chess.BISHOP: 330,
     chess.ROOK: 500,
     chess.QUEEN: 900,
+    chess.KING: 0,
+}
+
+KING_DANGER_WEIGHTS = {
+    chess.PAWN: 6,
+    chess.KNIGHT: 14,
+    chess.BISHOP: 12,
+    chess.ROOK: 18,
+    chess.QUEEN: 25,
     chess.KING: 0,
 }
 
@@ -113,7 +124,6 @@ PIECE_SQUARE_TABLES = {
     chess.KING: KING_TABLE,
 }
 
-
 class SearchTimeout(Exception):
     pass
 
@@ -142,6 +152,17 @@ class ChessEngine:
 
         if not legal_moves:
             return None
+        
+        book_move = self.choose_book_move(board)
+
+        if book_move is not None:
+            self.nodes_searched = 0
+            self.tt_hits = 0
+            self.aspiration_researches = 0
+            self.last_depth_reached = 0
+            self.last_search_time = 0.0
+            self.last_eval = 0.0
+            return book_move
 
         best_move = legal_moves[0]
         best_score = -math.inf
@@ -149,7 +170,7 @@ class ChessEngine:
 
         try:
             for depth in range(1, self.max_depth + 1):
-                if previous_score is None:
+                if ASPIRATION_WINDOW is None or previous_score is None:
                     alpha = -math.inf
                     beta = math.inf
                 else:
@@ -163,14 +184,15 @@ class ChessEngine:
                     beta,
                 )
 
-                if current_best_score <= alpha or current_best_score >= beta:
-                    self.aspiration_researches += 1
-                    current_best_move, current_best_score = self.search_root(
-                        board,
-                        depth,
-                        -math.inf,
-                        math.inf,
-                    )
+                if ASPIRATION_WINDOW is not None:
+                    if current_best_score <= alpha or current_best_score >= beta:
+                        self.aspiration_researches += 1
+                        current_best_move, current_best_score = self.search_root(
+                            board,
+                            depth,
+                            -math.inf,
+                            math.inf,
+                        )
 
                 best_move = current_best_move
                 best_score = current_best_score
@@ -259,7 +281,10 @@ class ChessEngine:
                     return tt_score
 
         if depth == 0:
-            return self.quiescence_search(board, alpha, beta, QUIESCENCE_DEPTH)
+            if board.is_check():
+                depth = 1
+            else:
+                return self.quiescence_search(board, alpha, beta, QUIESCENCE_DEPTH)
 
         best_score = -math.inf
         best_move = None
@@ -270,7 +295,13 @@ class ChessEngine:
         for move in moves:
             try:
                 board.push(move)
-                score = -self.negamax(board, depth - 1, -beta, -alpha)
+
+                extension = 0
+
+                if board.is_check() and depth <= 3:
+                    extension = 1
+
+                score = -self.negamax(board, depth - 1 + extension, -beta, -alpha)
             finally:
                 board.pop()
 
@@ -358,10 +389,64 @@ class ChessEngine:
             else:
                 score -= value + positional_value
 
+        king_danger = self.evaluate_king_danger(board)
+        score += int(self.king_safety_phase(board) * king_danger)
+
         if board.turn == chess.WHITE:
             return score
 
         return -score
+
+    def evaluate_king_danger(self, board):
+        white_danger = self.king_danger_for_colour(board, chess.WHITE)
+        black_danger = self.king_danger_for_colour(board, chess.BLACK)
+
+        return black_danger - white_danger
+
+    def king_danger_for_colour(self, board, colour):
+        king_square = board.king(colour)
+
+        if king_square is None:
+            return 0
+
+        enemy_colour = not colour
+        danger = 0
+
+        king_file = chess.square_file(king_square)
+        king_rank = chess.square_rank(king_square)
+
+        for file_offset in (-1, 0, 1):
+            for rank_offset in (-1, 0, 1):
+                if file_offset == 0 and rank_offset == 0:
+                    continue
+
+                file = king_file + file_offset
+                rank = king_rank + rank_offset
+
+                if file < 0 or file > 7 or rank < 0 or rank > 7:
+                    continue
+
+                square = chess.square(file, rank)
+                attackers = board.attackers(enemy_colour, square)
+
+                for attacker_square in attackers:
+                    attacker = board.piece_at(attacker_square)
+
+                    if attacker is None:
+                        continue
+
+                    danger += KING_DANGER_WEIGHTS[attacker.piece_type]
+
+        return danger
+
+    def king_safety_phase(self, board):
+        non_pawn_material = 0
+
+        for piece in board.piece_map().values():
+            if piece.piece_type not in (chess.PAWN, chess.KING):
+                non_pawn_material += PIECE_VALUES[piece.piece_type]
+
+        return min(1.0, non_pawn_material / 4000)
 
     def get_piece_square_value(self, piece, square):
         table = PIECE_SQUARE_TABLES[piece.piece_type]
@@ -404,6 +489,7 @@ class ChessEngine:
         if time.time() - self.search_start_time >= self.time_limit:
             raise SearchTimeout
 
+
     def order_moves(self, board, moves, tt_move=None):
         def move_score(move):
             score = 0
@@ -426,6 +512,34 @@ class ChessEngine:
 
         return sorted(moves, key=move_score, reverse=True)
 
+    def choose_book_move(self, board):
+        if not USE_OPENING_BOOK:
+            return None
+
+        if board.ply() > BOOK_MAX_PLIES:
+            return None
+
+        try:
+            with chess.polyglot.open_reader(OPENING_BOOK_PATH) as reader:
+                entries = list(reader.find_all(board))
+        except FileNotFoundError:
+            return None
+        except OSError:
+            return None
+        except IndexError:
+            return None
+
+        legal_entries = [
+            entry for entry in entries
+            if entry.move in board.legal_moves
+        ]
+
+        if not legal_entries:
+            return None
+
+        best_entry = max(legal_entries, key=lambda entry: entry.weight)
+        return best_entry.move
+    
 
 class ChessGUI:
     def __init__(self):
