@@ -170,6 +170,8 @@ class ChessEngine:
 
         try:
             for depth in range(1, self.max_depth + 1):
+                depth_start_time = time.time()
+
                 if ASPIRATION_WINDOW is None or previous_score is None:
                     alpha = -math.inf
                     beta = math.inf
@@ -199,6 +201,9 @@ class ChessEngine:
                 previous_score = best_score
                 self.last_depth_reached = depth
 
+                depth_time = time.time() - depth_start_time
+                elapsed_time = time.time() - self.search_start_time
+
                 board_hash = self.get_board_hash(board)
                 self.transposition_table[board_hash] = (
                     depth,
@@ -206,6 +211,9 @@ class ChessEngine:
                     "exact",
                     best_move,
                 )
+
+                if elapsed_time + 1.15 * depth_time > self.time_limit:
+                    break
 
         except SearchTimeout:
             pass
