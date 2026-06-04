@@ -39,6 +39,35 @@ Configuration:
 
 ## Experiments Kept For Now
 
+### Phase-Specific Tuned Evaluation Weights
+
+Constrained phase-specific tuning was applied.
+
+Evaluation result after applying:
+
+- MAE: 341.90
+- RMSE: 584.09
+- Correlation: 0.4966
+- Sign agreement: 64.1%
+
+Conversion test:
+
+- Passed: yes
+- Promotion occurred: yes
+
+Quick check:
+
+- Passed: yes
+- Repeated known blunders: 4
+- Matched report Stockfish best: 4
+- Position suite matches: 10/27
+- Average depth: 3.67
+- Average time: 1.58s
+- Average nodes: 12844
+- Average TT hits: 580.22
+
+Decision: keep as the current tuning candidate because it improves static evaluation alignment, preserves promotion conversion, and improves the quick-check position suite from 9/27 to 10/27.
+
 ### Passed-Pawn Evaluation Experiment
 
 Quick-check results:
