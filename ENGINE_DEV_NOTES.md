@@ -13,6 +13,29 @@ Current baseline characteristics:
 - Killer moves are kept as the current move-ordering experiment.
 - King safety remains controlled by `USE_KING_SAFETY`.
 
+## Current Strongest Quick-Check Version
+
+Quick-check results:
+
+- Quick check passed: yes
+- Repeated known blunders: 4
+- Matched report Stockfish best: 4
+- Position suite Stockfish matches: 9/27
+- Average depth: 4.15
+- Average time: 1.84s
+- Average nodes: 17748
+- Average TT hits: 793.41
+- Average aspiration re-searches: 0.00
+
+Decision: this is the current strongest development version by quick-check results.
+
+Configuration:
+
+- `ASPIRATION_WINDOW = None`
+- TT behaviour restored/unchanged
+- Iterative-deepening time guard kept
+- Quiescence in-check fix kept
+
 ## Experiments Kept For Now
 
 ### Aspiration Windows Disabled
