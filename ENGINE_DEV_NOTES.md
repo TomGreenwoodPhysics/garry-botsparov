@@ -20,11 +20,11 @@ Quick-check results:
 - Quick check passed: yes
 - Repeated known blunders: 4
 - Matched report Stockfish best: 4
-- Position suite Stockfish matches: 9/27
-- Average depth: 4.15
-- Average time: 1.84s
-- Average nodes: 17748
-- Average TT hits: 793.41
+- Position suite Stockfish matches: 11/27
+- Average depth: 3.96
+- Average time: 1.92s
+- Average nodes: 16129
+- Average TT hits: 763.59
 - Average aspiration re-searches: 0.00
 
 Decision: this is the current strongest development version by quick-check results.
@@ -35,8 +35,34 @@ Configuration:
 - TT behaviour restored/unchanged
 - Iterative-deepening time guard kept
 - Quiescence in-check fix kept
+- Passed-pawn evaluation kept provisionally
 
 ## Experiments Kept For Now
+
+### Passed-Pawn Evaluation Experiment
+
+Quick-check results:
+
+- Quick check passed: yes
+- Repeated known blunders: 4
+- Matched report Stockfish best: 4
+- Position suite Stockfish matches: 11/27
+- Average depth: 3.96
+- Average time: 1.92s
+- Average nodes: 16129
+- Average TT hits: 763.59
+- Average aspiration re-searches: 0.00
+- Index 26 unchanged: Garry still chose `g1g5`
+
+Position-suite comparison:
+
+- Improved indices: 18 and 25
+- Worsened indices by Stockfish-match status: none found
+- Improvement is mixed: one endgame/pawn-related improvement and one middlegame/tactical improvement
+
+Decision: keep passed-pawn evaluation provisionally as the current strongest quick-check version because it improved quick-check score without worsening blunders.
+
+Note: this did not fix the manual rook/pawn conversion issue, so that needs separate investigation later.
 
 ### Aspiration Windows Disabled
 
