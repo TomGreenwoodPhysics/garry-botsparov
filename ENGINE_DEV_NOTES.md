@@ -68,6 +68,35 @@ Quick check:
 
 Decision: keep as the current tuning candidate because it improves static evaluation alignment, preserves promotion conversion, and improves the quick-check position suite from 9/27 to 10/27.
 
+### 20-Game Raw Benchmark With Phase-Specific Tuned Evaluation
+
+- Opening book: off
+- Stockfish Elo: 1550
+- Stockfish time per move: 0.10s
+- Engine time per move: 2.00s
+- Games: 20
+- Wins: 12
+- Draws: 3
+- Losses: 5
+- Score: 13.5/20
+- Score rate: 67.5%
+- Estimated Elo difference: +127
+- Total time: 1924.9s
+- Engine moves analysed: 1013
+- Average depth reached: 3.57
+- Maximum depth reached: 7
+- Average nodes per move: 14555
+- Average time per move: 1.81s
+- Average TT hits per move: 330
+
+Average depth by phase:
+
+- Opening: 3.16
+- Middlegame: 3.34
+- Endgame: 4.43
+
+Decision: this is the strongest raw book-off short benchmark so far. Keep phase-specific tuned evaluation as the current best candidate, pending a longer 50-100 game benchmark.
+
 ### Passed-Pawn Evaluation Experiment
 
 Quick-check results:
