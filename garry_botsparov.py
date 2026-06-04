@@ -4,15 +4,58 @@ import chess
 import chess.polyglot
 import pygame
 
+# mode presets
+# Benchmark mode: PLAYER_COLOUR = chess.WHITE, USE_OPENING_BOOK = False, STARTING_FEN = None
+# Practical play mode: USE_OPENING_BOOK = True
+# Manual FEN test mode:
+# PLAYER_COLOUR = chess.WHITE
+# STARTING_FEN = "8/2b5/8/3R4/8/5k2/1P3P1P/6K1 w - - 0 1"
+
 # engine settings
 MAX_ENGINE_DEPTH = 10
 ENGINE_TIME_LIMIT = 2.0
 PLAYER_COLOUR = chess.WHITE
 QUIESCENCE_DEPTH = 4
 ASPIRATION_WINDOW = None
-USE_OPENING_BOOK = False
+USE_OPENING_BOOK = True
 OPENING_BOOK_PATH = r"C:\Users\Tom Greenwood\Desktop\Coding Projects\Chess Bot\Garry Botsparov\book.bin"
 BOOK_MAX_PLIES = 12
+PASSED_PAWN_BONUS = 20
+PASSED_PAWN_ADVANCE_BONUS = 12
+PASSED_PAWN_ENDGAME_SCALE = 2.0
+PASSED_PAWN_SIXTH_BONUS = 40
+PASSED_PAWN_SEVENTH_BONUS = 120
+MATERIAL_WEIGHT = 1.0
+OPENING_PAWN_TABLE_WEIGHT = 0.2
+OPENING_KNIGHT_TABLE_WEIGHT = 0.2
+OPENING_BISHOP_TABLE_WEIGHT = 1.7
+OPENING_ROOK_TABLE_WEIGHT = 0.2
+OPENING_QUEEN_TABLE_WEIGHT = 0.2
+OPENING_KING_TABLE_WEIGHT = 0.2
+OPENING_KING_DANGER_WEIGHT = 0.2
+OPENING_PASSED_PAWN_WEIGHT = 0.2
+OPENING_PROMOTION_URGENCY_WEIGHT = 1.0
+MIDDLEGAME_PAWN_TABLE_WEIGHT = 0.2
+MIDDLEGAME_KNIGHT_TABLE_WEIGHT = 0.2
+MIDDLEGAME_BISHOP_TABLE_WEIGHT = 1.8
+MIDDLEGAME_ROOK_TABLE_WEIGHT = 0.2
+MIDDLEGAME_QUEEN_TABLE_WEIGHT = 0.2
+MIDDLEGAME_KING_TABLE_WEIGHT = 0.2
+MIDDLEGAME_KING_DANGER_WEIGHT = 0.2
+MIDDLEGAME_PASSED_PAWN_WEIGHT = 0.3
+MIDDLEGAME_PROMOTION_URGENCY_WEIGHT = 0.5
+ENDGAME_PAWN_TABLE_WEIGHT = 0.2
+ENDGAME_KNIGHT_TABLE_WEIGHT = 1.8
+ENDGAME_BISHOP_TABLE_WEIGHT = 0.3
+ENDGAME_ROOK_TABLE_WEIGHT = 0.2
+ENDGAME_QUEEN_TABLE_WEIGHT = 1.8
+ENDGAME_KING_TABLE_WEIGHT = 0.2
+ENDGAME_KING_DANGER_WEIGHT = 0.1
+ENDGAME_PASSED_PAWN_WEIGHT = 0.5
+ENDGAME_PROMOTION_URGENCY_WEIGHT = 0.8
+
+# starting position
+STARTING_FEN = "r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/2N2N2/PPPP1PPP/R1BQK2R b KQkq - 5 4"
 
 # graphics settings
 WIDTH = 640
@@ -122,6 +165,48 @@ PIECE_SQUARE_TABLES = {
     chess.ROOK: ROOK_TABLE,
     chess.QUEEN: QUEEN_TABLE,
     chess.KING: KING_TABLE,
+}
+
+EVALUATION_PHASE_WEIGHTS = {
+    "opening": {
+        "piece_square": {
+            chess.PAWN: OPENING_PAWN_TABLE_WEIGHT,
+            chess.KNIGHT: OPENING_KNIGHT_TABLE_WEIGHT,
+            chess.BISHOP: OPENING_BISHOP_TABLE_WEIGHT,
+            chess.ROOK: OPENING_ROOK_TABLE_WEIGHT,
+            chess.QUEEN: OPENING_QUEEN_TABLE_WEIGHT,
+            chess.KING: OPENING_KING_TABLE_WEIGHT,
+        },
+        "king_danger": OPENING_KING_DANGER_WEIGHT,
+        "passed_pawn": OPENING_PASSED_PAWN_WEIGHT,
+        "promotion_urgency": OPENING_PROMOTION_URGENCY_WEIGHT,
+    },
+    "middlegame": {
+        "piece_square": {
+            chess.PAWN: MIDDLEGAME_PAWN_TABLE_WEIGHT,
+            chess.KNIGHT: MIDDLEGAME_KNIGHT_TABLE_WEIGHT,
+            chess.BISHOP: MIDDLEGAME_BISHOP_TABLE_WEIGHT,
+            chess.ROOK: MIDDLEGAME_ROOK_TABLE_WEIGHT,
+            chess.QUEEN: MIDDLEGAME_QUEEN_TABLE_WEIGHT,
+            chess.KING: MIDDLEGAME_KING_TABLE_WEIGHT,
+        },
+        "king_danger": MIDDLEGAME_KING_DANGER_WEIGHT,
+        "passed_pawn": MIDDLEGAME_PASSED_PAWN_WEIGHT,
+        "promotion_urgency": MIDDLEGAME_PROMOTION_URGENCY_WEIGHT,
+    },
+    "endgame": {
+        "piece_square": {
+            chess.PAWN: ENDGAME_PAWN_TABLE_WEIGHT,
+            chess.KNIGHT: ENDGAME_KNIGHT_TABLE_WEIGHT,
+            chess.BISHOP: ENDGAME_BISHOP_TABLE_WEIGHT,
+            chess.ROOK: ENDGAME_ROOK_TABLE_WEIGHT,
+            chess.QUEEN: ENDGAME_QUEEN_TABLE_WEIGHT,
+            chess.KING: ENDGAME_KING_TABLE_WEIGHT,
+        },
+        "king_danger": ENDGAME_KING_DANGER_WEIGHT,
+        "passed_pawn": ENDGAME_PASSED_PAWN_WEIGHT,
+        "promotion_urgency": ENDGAME_PROMOTION_URGENCY_WEIGHT,
+    },
 }
 
 class SearchTimeout(Exception):
@@ -403,6 +488,20 @@ class ChessEngine:
 
         return alpha
 
+    def evaluation_phase(self, board):
+        ply = board.ply()
+
+        if ply < 20:
+            return "opening"
+
+        if ply < 80:
+            return "middlegame"
+
+        return "endgame"
+
+    def evaluation_weights(self, board):
+        return EVALUATION_PHASE_WEIGHTS[self.evaluation_phase(board)]
+
     def evaluate(self, board):
         if board.is_checkmate():
             if board.turn == chess.WHITE:
@@ -413,10 +512,15 @@ class ChessEngine:
             return 0
 
         score = 0
+        weights = self.evaluation_weights(board)
+        piece_square_weights = weights["piece_square"]
 
         for square, piece in board.piece_map().items():
-            value = PIECE_VALUES[piece.piece_type]
-            positional_value = self.get_piece_square_value(piece, square)
+            value = MATERIAL_WEIGHT * PIECE_VALUES[piece.piece_type]
+            positional_value = (
+                piece_square_weights[piece.piece_type]
+                * self.get_piece_square_value(piece, square)
+            )
 
             if piece.color == chess.WHITE:
                 score += value + positional_value
@@ -424,12 +528,91 @@ class ChessEngine:
                 score -= value + positional_value
 
         king_danger = self.evaluate_king_danger(board)
-        score += int(self.king_safety_phase(board) * king_danger)
+        score += int(weights["king_danger"] * self.king_safety_phase(board) * king_danger)
+        score += self.evaluate_passed_pawns(board, weights)
 
         if board.turn == chess.WHITE:
             return score
 
         return -score
+
+    def evaluate_passed_pawns(self, board, weights=None):
+        if weights is None:
+            weights = self.evaluation_weights(board)
+
+        score = 0
+        non_pawn_material = 0
+
+        for piece_type in (chess.KNIGHT, chess.BISHOP, chess.ROOK, chess.QUEEN):
+            non_pawn_material += (
+                len(board.pieces(piece_type, chess.WHITE))
+                + len(board.pieces(piece_type, chess.BLACK))
+            ) * PIECE_VALUES[piece_type]
+
+        endgame_phase = 1.0 - min(1.0, non_pawn_material / 4000)
+        scale = 1.0 + endgame_phase * (PASSED_PAWN_ENDGAME_SCALE - 1.0)
+
+        for colour in (chess.WHITE, chess.BLACK):
+            colour_passed_score = 0
+            colour_urgency_score = 0
+
+            for square in board.pieces(chess.PAWN, colour):
+                if not self.is_passed_pawn(board, square, colour):
+                    continue
+
+                rank = chess.square_rank(square)
+                advancement = rank if colour == chess.WHITE else 7 - rank
+                colour_passed_score += PASSED_PAWN_BONUS
+                colour_passed_score += PASSED_PAWN_ADVANCE_BONUS * advancement
+                colour_urgency_score += int(
+                    endgame_phase * self.passed_pawn_urgency_bonus(advancement)
+                )
+
+            colour_score = (
+                weights["passed_pawn"] * colour_passed_score
+                + weights["promotion_urgency"] * colour_urgency_score
+            )
+
+            if colour == chess.WHITE:
+                score += int(colour_score * scale)
+            else:
+                score -= int(colour_score * scale)
+
+        return score
+
+    def passed_pawn_urgency_bonus(self, advancement):
+        if advancement >= 6:
+            return PASSED_PAWN_SEVENTH_BONUS
+
+        if advancement >= 5:
+            return PASSED_PAWN_SIXTH_BONUS
+
+        return 0
+
+    def is_passed_pawn(self, board, square, colour):
+        file = chess.square_file(square)
+        rank = chess.square_rank(square)
+        enemy_colour = not colour
+        file_range = range(max(0, file - 1), min(7, file + 1) + 1)
+
+        if colour == chess.WHITE:
+            rank_range = range(rank + 1, 8)
+        else:
+            rank_range = range(rank - 1, -1, -1)
+
+        for candidate_file in file_range:
+            for candidate_rank in rank_range:
+                candidate_square = chess.square(candidate_file, candidate_rank)
+                piece = board.piece_at(candidate_square)
+
+                if (
+                    piece is not None
+                    and piece.color == enemy_colour
+                    and piece.piece_type == chess.PAWN
+                ):
+                    return False
+
+        return True
 
     def evaluate_king_danger(self, board):
         white_danger = self.king_danger_for_colour(board, chess.WHITE)
@@ -586,7 +769,7 @@ class ChessGUI:
         self.font = pygame.font.SysFont("arial", 22)
         self.small_font = pygame.font.SysFont("arial", 18)
 
-        self.board = chess.Board()
+        self.board = chess.Board(STARTING_FEN) if STARTING_FEN else chess.Board()
         self.engine = ChessEngine()
 
         self.player_colour = PLAYER_COLOUR
