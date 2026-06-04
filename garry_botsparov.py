@@ -334,6 +334,32 @@ class ChessEngine:
         self.check_time()
         self.nodes_searched += 1
 
+        if board.is_checkmate():
+            return -100000 - depth
+
+        if board.is_stalemate() or board.is_insufficient_material():
+            return 0
+
+        if board.is_check():
+            moves = self.order_moves(board, list(board.legal_moves))
+
+            for move in moves:
+                self.check_time()
+
+                try:
+                    board.push(move)
+                    score = -self.quiescence_search(board, -beta, -alpha, depth - 1)
+                finally:
+                    board.pop()
+
+                if score >= beta:
+                    return beta
+
+                if score > alpha:
+                    alpha = score
+
+            return alpha
+
         stand_pat = self.evaluate(board)
 
         if depth == 0:

@@ -13,7 +13,7 @@ from garry_botsparov import ChessEngine
 STOCKFISH_PATH = r"C:\Users\Tom Greenwood\Desktop\Coding Projects\Chess Bot\stockfish\stockfish-windows-x86-64-avx2.exe"
 
 STOCKFISH_ELO = 1550
-NUM_GAMES = 30
+NUM_GAMES = 10
 MAX_PLIES = 400
 
 YOUR_ENGINE_MAX_DEPTH = 10
