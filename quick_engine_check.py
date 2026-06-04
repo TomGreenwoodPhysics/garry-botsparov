@@ -63,6 +63,15 @@ def main():
         + find_value(suite_output, r"Average depth: ([0-9.]+)"),
         "position suite average time: "
         + find_value(suite_output, r"Average time per position: ([0-9.]+s)"),
+        "position suite average nodes: "
+        + find_value(suite_output, r"Average nodes: ([0-9.]+)"),
+        "position suite average TT hits: "
+        + find_value(suite_output, r"Average TT hits(?: per position)?: ([0-9.]+)"),
+        "position suite average aspiration re-searches: "
+        + find_value(
+            suite_output,
+            r"Average aspiration re-searches(?: per position)?: ([0-9.]+)",
+        ),
     ]
 
     summary = "\n".join(summary_lines)

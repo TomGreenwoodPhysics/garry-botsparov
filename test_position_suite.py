@@ -172,6 +172,8 @@ def main():
                 "garry_eval": engine.last_eval,
                 "depth_reached": engine.last_depth_reached,
                 "nodes_searched": engine.nodes_searched,
+                "tt_hits": engine.tt_hits,
+                "aspiration_researches": engine.aspiration_researches,
                 "time_used": engine.last_search_time,
                 "stockfish_best": stockfish_uci,
                 "stockfish_score": stockfish_score,
@@ -194,6 +196,10 @@ def main():
     positions_tested = len(results)
     average_depth = sum(result["depth_reached"] for result in results) / positions_tested
     average_nodes = sum(result["nodes_searched"] for result in results) / positions_tested
+    average_tt_hits = sum(result["tt_hits"] for result in results) / positions_tested
+    average_aspiration_researches = (
+        sum(result["aspiration_researches"] for result in results) / positions_tested
+    )
     average_time = sum(result["time_used"] for result in results) / positions_tested
 
     stockfish_results = [
@@ -220,6 +226,8 @@ def main():
 
     print(f"Average depth: {average_depth:.2f}")
     print(f"Average nodes: {average_nodes:.0f}")
+    print(f"Average TT hits: {average_tt_hits:.2f}")
+    print(f"Average aspiration re-searches: {average_aspiration_researches:.2f}")
     print(f"Average time per position: {average_time:.2f}s")
 
     if disagreements:
