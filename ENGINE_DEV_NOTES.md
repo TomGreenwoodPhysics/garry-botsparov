@@ -64,6 +64,27 @@ Decision: keep passed-pawn evaluation provisionally as the current strongest qui
 
 Note: this did not fix the manual rook/pawn conversion issue, so that needs separate investigation later.
 
+Manual validation note:
+
+- A manual rook/pawn endgame test was set up using this FEN:
+  `8/2b5/8/3R4/8/5k2/1P3P1P/6K1 w - - 0 1`
+- Garry playing White now pushes pawns and promotes instead of endlessly moving the rook/checking.
+- This supports keeping the passed-pawn evaluation term.
+
+Quick-check result for this version:
+
+- Quick check passed: yes
+- Repeated known blunders: 4
+- Matched report Stockfish best: 4
+- Position suite Stockfish matches: 11/27
+- Average depth: 3.96
+- Average time: 1.92s
+- Average nodes: 16129
+- Average TT hits: 763.59
+- Aspiration re-searches: 0.00
+
+Decision: passed-pawn evaluation is kept as part of the current v0.3.2 candidate.
+
 ### Aspiration Windows Disabled
 
 Previous quick check with aspiration windows enabled:
