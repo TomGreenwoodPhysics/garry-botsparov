@@ -13,6 +13,34 @@ Current baseline characteristics:
 - Killer moves are kept as the current move-ordering experiment.
 - King safety remains controlled by `USE_KING_SAFETY`.
 
+## Experiments Kept For Now
+
+### Aspiration Windows Disabled
+
+Previous quick check with aspiration windows enabled:
+
+- Repeated known blunders: 5
+- Matched report Stockfish best: 3
+- Position suite matches: 7/27
+- Average depth: 4.30
+- Average time: 1.80s
+- Average nodes: 18361
+- Average TT hits: 881.48
+- Average aspiration re-searches: 0.85
+
+After disabling aspiration windows:
+
+- Repeated known blunders: 4
+- Matched report Stockfish best: 4
+- Position suite matches: 8/27
+- Average depth: 4.22
+- Average time: 1.86s
+- Average nodes: 19032
+- Average TT hits: 830.33
+- Average aspiration re-searches: 0.00
+
+Decision: keep `ASPIRATION_WINDOW = None` for now because it improves the quick-check metrics and removes wasted re-searches.
+
 ## Experiments Tried And Reverted
 
 - Terminal detection refactor using pre-generated legal move lists in `negamax()` and `quiescence_search()`.
